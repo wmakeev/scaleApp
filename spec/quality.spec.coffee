@@ -15,7 +15,7 @@ describe "The codebase", ->
     maxSLOC =
       "src/Core.coffee"     : 160
       "src/Util.coffee"     : 100
-      "src/Mediator.coffee" : 90
+      "src/Mediator.coffee" : 95
       "src/scaleApp.coffee" : 20
 
     sum = 0
@@ -37,5 +37,5 @@ describe "The codebase", ->
     min = fs.readFileSync "dist/scaleApp.min.js"
     b = new buffer.Buffer min
     zlib.gzip b, (err, compressed)->
-      (expect compressed.length).to.be.at.most 3400
+      (expect compressed.length).to.be.at.most 3450
       done()

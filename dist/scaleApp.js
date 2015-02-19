@@ -1,5 +1,5 @@
 /*!
-scaleapp - v0.5.0 - 2015-01-06
+scaleapp - v0.5.0 - 2015-02-19
 This program is distributed under the terms of the MIT license.
 Copyright (c) 2011-2015 Markus Kohlhase <mail@markus-kohlhase.de>
 */
@@ -423,21 +423,29 @@ Copyright (c) 2011-2015 Markus Kohlhase <mail@markus-kohlhase.de>
       return this;
     };
 
-    Mediator.prototype.pipe = function(src, target, mediator) {
+    Mediator._redirect = function(method, src, target, mediator) {
       if (target instanceof Mediator) {
         mediator = target;
         target = src;
       }
       if (mediator == null) {
-        return this.pipe(src, target, this);
+        return Mediator._redirect.call(this, method, src, target, this);
       }
       if (mediator === this && src === target) {
         return this;
       }
       this.on(src, function() {
-        return mediator.emit.apply(mediator, [target].concat(__slice.call(arguments)));
+        return mediator[method].apply(mediator, [target].concat(__slice.call(arguments)));
       });
       return this;
+    };
+
+    Mediator.prototype.pipe = function(src, target, mediator) {
+      return Mediator._redirect.apply(this, ['emit'].concat(__slice.call(arguments)));
+    };
+
+    Mediator.prototype.forward = function(src, target, mediator) {
+      return Mediator._redirect.apply(this, ['send'].concat(__slice.call(arguments)));
     };
 
     Mediator._rm = function(o, ch, cb, ctxt) {

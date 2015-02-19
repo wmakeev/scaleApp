@@ -115,19 +115,27 @@ class Mediator
         else obj[k] ?= v
     @
 
-  pipe: (src, target, mediator) ->
+  @_redirect: (method, src, target, mediator) ->
 
     if target instanceof Mediator
       mediator = target; target = src
 
-    return @pipe src, target, @ unless mediator?
+    return Mediator._redirect.call @, method, src, target, @ unless mediator?
 
     # prevent cycles
     return @ if mediator is @ and src is target
 
-    @on src, -> mediator.emit.apply mediator, [target, arguments...]
+    @on src, -> mediator[method].apply mediator, [target, arguments...]
 
     @
+
+  pipe: (src, target, mediator) ->
+    Mediator._redirect.apply @, ['emit', arguments...]
+
+
+  forward: (src, target, mediator) ->
+    Mediator._redirect.apply @, ['send', arguments...]
+
 
   @_rm: (o, ch, cb, ctxt) ->
     return unless o.channels[ch]?
