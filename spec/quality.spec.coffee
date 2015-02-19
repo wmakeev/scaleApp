@@ -25,7 +25,7 @@ describe "The codebase", ->
       sum += x
       (expect x).to.be.at.most count
 
-    (expect sum).to.be.at.most 360
+    (expect sum).to.be.at.most 370
 
   it "is small", (done) ->
     stat = fs.statSync "dist/scaleApp.js"
@@ -37,5 +37,5 @@ describe "The codebase", ->
     min = fs.readFileSync "dist/scaleApp.min.js"
     b = new buffer.Buffer min
     zlib.gzip b, (err, compressed)->
-      (expect compressed.length).to.be.at.most 3450
+      (expect compressed.length).to.be.at.most 3460
       done()

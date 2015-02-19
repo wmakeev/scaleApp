@@ -270,6 +270,10 @@ Copyright (c) 2011-2015 Markus Kohlhase <mail@markus-kohlhase.de>
           pipe: function() {
             that.pipe.apply(that, [channel].concat(__slice.call(arguments)));
             return this;
+          },
+          forward: function() {
+            that.forward.apply(that, [channel].concat(__slice.call(arguments)));
+            return this;
           }
         }.attach();
       }

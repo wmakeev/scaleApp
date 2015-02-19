@@ -26,9 +26,10 @@ class Mediator
       return false unless typeof channel is "string"
       subscription = { context: context, callback: fn or -> }
       (
-        attach: -> that.channels[channel].push subscription; @
-        detach: -> Mediator._rm that, channel, subscription.callback; @
-        pipe:   -> that.pipe.apply that, [channel, arguments...]; @
+        attach  : -> that.channels[channel].push subscription; @
+        detach  : -> Mediator._rm that, channel, subscription.callback; @
+        pipe    : -> that.pipe.apply that, [channel, arguments...]; @
+        forward : -> that.forward.apply that, [channel, arguments...]; @
       ).attach()
 
   # ## Unsubscribe from a topic
