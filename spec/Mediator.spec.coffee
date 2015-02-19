@@ -31,8 +31,8 @@ describe "Mediator", ->
       (expect sub.detach).to.be.a "function"
       (expect sub).not.to.equal sub2
 
-    it "returns false if callback is not a function", ->
-      (expect @paul.on "a", 345).to.equal false
+    it "returns the subscription even if the callback isn't a function", ->
+      (expect @paul.on "a", 345).to.be.an "object"
 
     it "has an alias method named 'on'", ->
       (expect @paul.on).to.equal @paul.on
@@ -178,7 +178,7 @@ describe "Mediator", ->
       (expect cb1.callCount).to.equal 8
       (expect cb2.callCount).to.equal 1
 
-  describe "publish function", ->
+  describe "emit function", ->
 
     it "is an accessible function", ->
       (expect @paul.emit).to.be.a "function"
@@ -397,7 +397,7 @@ describe "Mediator", ->
       @cb3 = sinon.spy()
       @anObject = {}
 
-    it "publishes data to a subscribed topic", ->
+    it "emits data to a subscribed topic", ->
 
       @paul.on  "a channel", @cb
       @paul.installTo @anObject
@@ -419,7 +419,7 @@ describe "Mediator", ->
       (expect @cb.callCount).to.equal 1
       (expect @cb2).not.to.have.been.called
 
-    it "publishes data to all subscribers even if an error occours", ->
+    it "emits data to all subscribers even if an error occours", ->
       cb = sinon.spy()
       @paul.on "channel", -> cb()
       @paul.on "channel", -> (throw new Error "err"); cb()
@@ -427,7 +427,7 @@ describe "Mediator", ->
       @paul.emit "channel"
       (expect cb.callCount).to.equal 2
 
-    it "publishes the reference of data objects by default", (done) ->
+    it "emits the reference of data objects by default", (done) ->
 
       obj = {a:true,b:"x",c:{ y:0 }}
 
@@ -449,13 +449,13 @@ describe "Mediator", ->
 
       @paul.send "obj", obj
 
-    it "does not publish/send data to other topics", ->
+    it "does not emit data to other topics", ->
       @paul.on "a channel", @cb
       @paul.emit "another channel", @data
       @paul.send "another channel", @data
       (expect @cb).not.to.have.been.called
 
-    it "can request data by publishing an event", (done) ->
+    it "can request data by emit an event", (done) ->
 
       # lets say we have database with user objects
       db = [
@@ -475,7 +475,7 @@ describe "Mediator", ->
         # send results
         r.receive null, result
 
-      # receive a list of users by publishing a read event
+      # receive a list of users by emitting a read event
       @dbAccess.emit "read",
         query: { role: "admin" }
         receive: (err, data) ->
@@ -499,7 +499,7 @@ describe "Mediator", ->
       @dbAccess.on "read", (query, channel, reply) ->
         # prcocess the query
         # .. but something went wrong
-        reply new Error('Error during database access');
+        reply new Error('Error during database access')
 
       # common query handler
       dbQueryHandler = (query, channel, reply) ->
@@ -507,7 +507,7 @@ describe "Mediator", ->
         result = []
         for user in db
           result.push user for k,v of query when user[k] is v
-        spy();
+        spy()
         # send results
         reply null, result
 
@@ -521,12 +521,12 @@ describe "Mediator", ->
         (expect data.length).to.equal 1
         (expect data[0]).to.eql { name: "markus", role: "admin" }
         # was sent only one query to the database
-        (expect spy.calledOnce).to.be.true;
+        (expect spy.calledOnce).to.be.true
         done()
 
     describe "auto subscription", ->
 
-      it "publishes subtopics to parent topics", ->
+      it "emits subtopics to parent topics", ->
 
         @paul.cascadeChannels = true
         @paul.on "parentTopic", @cb
@@ -539,6 +539,33 @@ describe "Mediator", ->
         (expect @cb1).to.have.been.called
         (expect @cb2).to.have.been.called
         (expect @cb3).not.to.have.been.called
+
+      it "optionally emits the original channel name", (done) ->
+
+        count = 0
+        @paul.cascadeChannels = yes
+        @paul.emitOriginalChannels = yes
+        @paul.on "module/route", (data, topic) =>
+
+          switch count
+            when 0
+              (expect topic).to.eql "module/route/hit"
+              count++
+            when 1
+              (expect topic).to.eql "module/route/miss"
+              @paul.emitOriginalChannels = no
+              count++
+            when 2
+              (expect topic).to.eql "module/route"
+              count++
+            when 3
+              (expect topic).to.eql "module/route"
+              done()
+
+        @paul.emit "module/route/hit"
+        @paul.emit "module/route/miss"
+        @paul.emit "module/route/hit"
+        @paul.emit "module/route/miss"
 
       it "doesn't send subtopics to parent topics", ->
 
@@ -553,3 +580,63 @@ describe "Mediator", ->
         (expect @cb1).not.to.have.been.called
         (expect @cb2).to.have.been.called
         (expect @cb3).not.to.have.been.called
+
+    describe "pipe", ->
+
+      beforeEach ->
+        @a = new @Mediator
+        @b = new @Mediator
+
+      it "is a method", ->
+        @x = new @Mediator
+        (expect @x.pipe).to.be.a.function
+
+      it "is a subscription method", ->
+        @x = new @Mediator
+        sub =  @x.on "foo", ->
+        (expect sub.pipe).to.be.a.function
+        (expect sub.pipe()).to.eql sub
+
+      it "forwards messages of subscription to another mediator", (done) ->
+        @a.on("foo").pipe(@b)
+        @b.on "foo", (ev) ->
+          (expect ev).to.eql 33
+          done()
+
+        @a.emit "foo", 33
+
+      it "forwards messages of a channel to another one", (done) ->
+        @a.pipe("foo", "bar")
+        @a.on "bar", (ev) ->
+          (expect ev).to.eql "data"
+          done()
+
+        @a.emit "foo", "data"
+
+      it "forwards messages of a channel to another mediator", (done) ->
+        @a.pipe("foo",@b)
+        @b.on "foo", (ev) ->
+          (expect ev).to.eql 77
+          done()
+
+        @a.emit "foo", 77
+
+      it "ignores method calls with no argument", ->
+        (expect @a.pipe()).to.eql @a
+        sub = @a.on "baz"
+        (expect sub).to.eql sub.pipe()
+
+      it "forwards messages of a channel to another channel of another mediator", (done) ->
+        @a.on("bar").pipe("baz",@b)
+        @b.on "baz", (d) ->
+          (expect d).to.eql -3
+          done()
+        @a.emit "bar", -3
+
+      it "forwards messages of a subscription to another channel", (done) ->
+        @a.on("x").pipe("y")
+        @a.on "y", (ev) ->
+          (expect ev).to.eql "yeah!"
+          done()
+
+        @a.emit "x", "yeah!"

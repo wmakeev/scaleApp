@@ -1,7 +1,7 @@
 /*!
-scaleapp - v0.4.5 - 2014-12-29
+scaleapp - v0.5.0 - 2015-01-06
 This program is distributed under the terms of the MIT license.
-Copyright (c) 2011-2014 Markus Kohlhase <mail@markus-kohlhase.de>
+Copyright (c) 2011-2015 Markus Kohlhase <mail@markus-kohlhase.de>
 */
 (function() {
   var Core, Mediator, api, argRgx, checkType, doForAll, fnRgx, getArgumentNames, runFirst, runParallel, runSeries, runWaterfall, util,
@@ -251,15 +251,12 @@ Copyright (c) 2011-2014 Markus Kohlhase <mail@markus-kohlhase.de>
         }
         return _results1;
       } else {
-        if (typeof fn !== "function") {
-          return false;
-        }
         if (typeof channel !== "string") {
           return false;
         }
         subscription = {
           context: context,
-          callback: fn
+          callback: fn || function() {}
         };
         return {
           attach: function() {
@@ -268,6 +265,10 @@ Copyright (c) 2011-2014 Markus Kohlhase <mail@markus-kohlhase.de>
           },
           detach: function() {
             Mediator._rm(that, channel, subscription.callback);
+            return this;
+          },
+          pipe: function() {
+            that.pipe.apply(that, [channel].concat(__slice.call(arguments)));
             return this;
           }
         }.attach();
@@ -303,7 +304,7 @@ Copyright (c) 2011-2014 Markus Kohlhase <mail@markus-kohlhase.de>
       return this;
     };
 
-    _getTasks = function(data, channel, ctx) {
+    _getTasks = function(data, channel, originalChannel, ctx) {
       var sub, subscribers, _i, _len, _results;
       subscribers = ctx.channels[channel] || [];
       _results = [];
@@ -314,9 +315,9 @@ Copyright (c) 2011-2014 Markus Kohlhase <mail@markus-kohlhase.de>
             var e;
             try {
               if (util.hasArgument(sub.callback, 3)) {
-                return sub.callback.apply(sub.context, [data, channel, next]);
+                return sub.callback.apply(sub.context, [data, originalChannel, next]);
               } else {
-                return next(null, sub.callback.apply(sub.context, [data, channel]));
+                return next(null, sub.callback.apply(sub.context, [data, originalChannel]));
               }
             } catch (_error) {
               e = _error;
@@ -328,10 +329,13 @@ Copyright (c) 2011-2014 Markus Kohlhase <mail@markus-kohlhase.de>
       return _results;
     };
 
-    Mediator.prototype.emit = function(channel, data, cb) {
-      var chnls, tasks;
+    Mediator.prototype.emit = function(channel, data, cb, originalChannel) {
+      var chnls, o, tasks;
       if (cb == null) {
-        cb = function() {};
+        cb = (function() {});
+      }
+      if (originalChannel == null) {
+        originalChannel = channel;
       }
       if (typeof data === "function") {
         cb = data;
@@ -340,7 +344,7 @@ Copyright (c) 2011-2014 Markus Kohlhase <mail@markus-kohlhase.de>
       if (typeof channel !== "string") {
         return false;
       }
-      tasks = _getTasks(data, channel, this);
+      tasks = _getTasks(data, channel, originalChannel, this);
       util.runSeries(tasks, (function(errors, results) {
         var e, x;
         if (errors) {
@@ -359,7 +363,10 @@ Copyright (c) 2011-2014 Markus Kohlhase <mail@markus-kohlhase.de>
         return cb(e);
       }), true);
       if (this.cascadeChannels && (chnls = channel.split('/')).length > 1) {
-        this.emit(chnls.slice(0, -1).join('/'), data, cb);
+        if (this.emitOriginalChannels) {
+          o = originalChannel;
+        }
+        this.emit(chnls.slice(0, -1).join('/'), data, cb, o);
       }
       return this;
     };
@@ -376,7 +383,7 @@ Copyright (c) 2011-2014 Markus Kohlhase <mail@markus-kohlhase.de>
       if (typeof channel !== "string") {
         return false;
       }
-      tasks = _getTasks(data, channel, this);
+      tasks = _getTasks(data, channel, channel, this);
       util.runFirst(tasks, (function(errors, result) {
         var e, x;
         if (errors) {
@@ -413,6 +420,23 @@ Copyright (c) 2011-2014 Markus Kohlhase <mail@markus-kohlhase.de>
           }
         }
       }
+      return this;
+    };
+
+    Mediator.prototype.pipe = function(src, target, mediator) {
+      if (target instanceof Mediator) {
+        mediator = target;
+        target = src;
+      }
+      if (mediator == null) {
+        return this.pipe(src, target, this);
+      }
+      if (mediator === this && src === target) {
+        return this;
+      }
+      this.on(src, function() {
+        return mediator.emit.apply(mediator, [target].concat(__slice.call(arguments)));
+      });
       return this;
     };
 
@@ -790,7 +814,7 @@ Copyright (c) 2011-2014 Markus Kohlhase <mail@markus-kohlhase.de>
   })();
 
   api = {
-    VERSION: "0.4.5",
+    VERSION: "0.5.0",
     util: util,
     Mediator: Mediator,
     Core: Core,

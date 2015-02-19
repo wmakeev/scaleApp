@@ -23,12 +23,12 @@ class Mediator
     else if typeof channel is "object"
       @on k,v,fn for k,v of channel
     else
-      return false unless typeof fn      is "function"
       return false unless typeof channel is "string"
-      subscription = { context: context, callback: fn }
+      subscription = { context: context, callback: fn or -> }
       (
         attach: -> that.channels[channel].push subscription; @
         detach: -> Mediator._rm that, channel, subscription.callback; @
+        pipe:   -> that.pipe.apply that, [channel, arguments...]; @
       ).attach()
 
   # ## Unsubscribe from a topic
@@ -48,15 +48,15 @@ class Mediator
       when "object"    then Mediator._rm @,id,null,ch for id of @channels
     @
 
-  _getTasks = (data, channel, ctx) ->
+  _getTasks = (data, channel, originalChannel, ctx) ->
     subscribers = ctx.channels[channel] or []
     for sub in subscribers then do (sub) ->
       (next) ->
         try
           if util.hasArgument sub.callback, 3
-            sub.callback.apply sub.context, [data, channel, next]
+            sub.callback.apply sub.context, [data, originalChannel, next]
           else
-            next null, sub.callback.apply sub.context, [data, channel]
+            next null, sub.callback.apply sub.context, [data, originalChannel]
         catch e
           next e
 
@@ -65,22 +65,24 @@ class Mediator
   # Parameters:
   # - (String) topic             - The topic name
   # - (Object) data              - The data that gets published
-  # - (Function)                 - callback method
-  emit: (channel, data, cb=->) ->
+  # - (Funtction)                - callback method
+  emit: (channel, data, cb=(->), originalChannel=channel) ->
 
     if typeof data is "function"
       cb  = data
       data = undefined
     return false unless typeof channel is "string"
-    tasks = _getTasks data, channel, @
+
+    tasks = _getTasks data, channel, originalChannel, @
 
     util.runSeries tasks,((errors, results) ->
       if errors
         e = new Error (x.message for x in errors when x?).join '; '
       cb e), true
 
-    if @cascadeChannels and (chnls = channel.split('/')).length > 1
-      @emit chnls[0...-1].join('/'), data, cb
+    if @cascadeChannels and (chnls = channel.split '/').length > 1
+      o = originalChannel if @emitOriginalChannels
+      @emit chnls[0...-1].join('/'), data, cb, o
     @
 
   # ## Send a task
@@ -95,7 +97,7 @@ class Mediator
       cb  = data
       data = undefined
     return false unless typeof channel is "string"
-    tasks = _getTasks data, channel, @
+    tasks = _getTasks data, channel, channel, @
 
     util.runFirst tasks,((errors, result) ->
       if errors
@@ -111,6 +113,20 @@ class Mediator
       for k,v of @
         if force then obj[k] = v
         else obj[k] ?= v
+    @
+
+  pipe: (src, target, mediator) ->
+
+    if target instanceof Mediator
+      mediator = target; target = src
+
+    return @pipe src, target, @ unless mediator?
+
+    # prevent cycles
+    return @ if mediator is @ and src is target
+
+    @on src, -> mediator.emit.apply mediator, [target, arguments...]
+
     @
 
   @_rm: (o, ch, cb, ctxt) ->
