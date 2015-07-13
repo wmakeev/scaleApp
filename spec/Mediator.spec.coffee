@@ -597,7 +597,7 @@ describe "Mediator", ->
         (expect sub.pipe).to.be.a.function
         (expect sub.pipe()).to.eql sub
 
-      it "forwards messages of subscription to another mediator", (done) ->
+      it "pipes messages of subscription to another mediator", (done) ->
         @a.on("foo").pipe(@b)
         @b.on "foo", (ev) ->
           (expect ev).to.eql 33
@@ -605,7 +605,7 @@ describe "Mediator", ->
 
         @a.emit "foo", 33
 
-      it "forwards messages of a channel to another one", (done) ->
+      it "pipes messages of a channel to another one", (done) ->
         @a.pipe("foo", "bar")
         @a.on "bar", (ev) ->
           (expect ev).to.eql "data"
@@ -613,8 +613,8 @@ describe "Mediator", ->
 
         @a.emit "foo", "data"
 
-      it "forwards messages of a channel to another mediator", (done) ->
-        @a.pipe("foo",@b)
+      it "pipes messages of a channel to another mediator", (done) ->
+        @a.pipe("foo", @b)
         @b.on "foo", (ev) ->
           (expect ev).to.eql 77
           done()
@@ -626,17 +626,84 @@ describe "Mediator", ->
         sub = @a.on "baz"
         (expect sub).to.eql sub.pipe()
 
-      it "forwards messages of a channel to another channel of another mediator", (done) ->
+      it "pipes messages of a channel to another channel of another mediator", (done) ->
         @a.on("bar").pipe("baz",@b)
         @b.on "baz", (d) ->
           (expect d).to.eql -3
           done()
         @a.emit "bar", -3
 
-      it "forwards messages of a subscription to another channel", (done) ->
+      it "pipes messages of a subscription to another channel", (done) ->
         @a.on("x").pipe("y")
-        @a.on "y", (ev) ->
-          (expect ev).to.eql "yeah!"
+        @a.on "y", (ev, channel, cb) ->
+          (expect ev).to.equal "yeah!"
+          (expect channel).to.equal "y"
+          (expect cb).to.be.a "function"
+          cb()
+
+        @a.emit "x", "yeah!", done
+
+    describe "forward", ->
+
+      beforeEach ->
+        @a = new @Mediator
+        @b = new @Mediator
+
+      it "is a method", ->
+        @x = new @Mediator
+        (expect @x.forward).to.be.a.function
+
+      it "is a subscription method", ->
+        @x = new @Mediator
+        sub =  @x.on "foo", ->
+        (expect sub.forward).to.be.a.function
+        (expect sub.forward()).to.eql sub
+
+      it "forwards messages of subscription to another mediator", (done) ->
+        @a.on("foo").forward(@b)
+        @b.on "foo", (ev) ->
+          (expect ev).to.eql 33
           done()
 
-        @a.emit "x", "yeah!"
+        @a.send "foo", 33
+
+      it "forwards messages of a channel to another one", (done) ->
+        @a.forward("foo", "bar")
+        @a.on "bar", (ev) ->
+          (expect ev).to.eql "data"
+          done()
+
+        @a.send "foo", "data"
+
+      it "forwards messages of a channel to another mediator", (done) ->
+        @a.forward("foo", @b)
+        @b.on "foo", (ev) ->
+          (expect ev).to.eql 77
+          done()
+
+        @a.send "foo", 77
+
+      it "ignores method calls with no argument", ->
+        (expect @a.forward()).to.eql @a
+        sub = @a.on "baz"
+        (expect sub).to.eql sub.forward()
+
+      it "forwards messages of a channel to another channel of another mediator", (done) ->
+        @a.on("bar").forward("baz",@b)
+        @b.on "baz", (d) ->
+          (expect d).to.eql -3
+          done()
+        @a.send "bar", -3
+
+      it "forwards messages of an empty subscription to another channel with reply", (done) ->
+        @a.on("x").forward("y")
+        @a.on "y", (ev, channel, reply) ->
+          (expect ev).to.equal "yeah!"
+          (expect channel).to.equal "y"
+          (expect reply).to.be.a('function')
+          setTimeout (-> reply null, "foo"), 0
+
+        @a.send "x", "yeah!", (err, reply) ->
+          (expect err).not.to.be.ok
+          (expect reply).to.be.equal "foo"
+          done()

@@ -5,14 +5,19 @@ class Mediator
     if obj instanceof Object then @installTo obj
     else if obj is true then @cascadeChannels=true
 
+  ###
+  Section: Public methods
+  ###
+
   # ## Subscribe to a topic
   #
   # Parameters:
   #
-  # - (String) topic      - The topic name
-  # - (Function) callback - The function that gets called if an other module
-  #                         publishes to the specified topic
-  # - (Object) context    - The context the function(s) belongs to
+  # - (String) topic              - The topic name
+  # - (Function) callback         - The function that gets called if an other module
+  #                                 publishes to the specified topic
+  # - (Object) context            - The context the function(s) belongs to
+  #
   on: (channel, fn, context=@) ->
 
     @channels[channel] ?= []
@@ -24,21 +29,27 @@ class Mediator
       @on k,v,fn for k,v of channel
     else
       return false unless typeof channel is "string"
-      subscription = { context: context, callback: fn or -> }
+      sub = { context: context, callback: fn }
       (
-        attach  : -> that.channels[channel].push subscription; @
-        detach  : -> Mediator._rm that, channel, subscription.callback; @
-        pipe    : -> that.pipe.apply that, [channel, arguments...]; @
-        forward : -> that.forward.apply that, [channel, arguments...]; @
+        attach  : ->
+          that.channels[channel].push sub if sub.callback
+          @
+        detach  : ->
+          Mediator._rm that, channel, sub.callback if sub.callback
+          @
+        pipe    : ->
+          that.pipe.apply that, [channel, arguments...]; @
+        forward : ->
+          that.forward.apply that, [channel, arguments...]; @
       ).attach()
 
   # ## Unsubscribe from a topic
   #
   # Parameters:
   #
-  # - (String) topic      - The topic name
-  # - (Function) callback - The function that gets called if an other module
-  #                         publishes to the specified topic
+  # - (String) topic              - The topic name
+  # - (Function) callback         - The function that gets called if an other module
+  #                                 publishes to the specified topic
   off: (ch, cb) ->
     switch typeof ch
       when "string"
@@ -49,24 +60,14 @@ class Mediator
       when "object"    then Mediator._rm @,id,null,ch for id of @channels
     @
 
-  _getTasks = (data, channel, originalChannel, ctx) ->
-    subscribers = ctx.channels[channel] or []
-    for sub in subscribers then do (sub) ->
-      (next) ->
-        try
-          if util.hasArgument sub.callback, 3
-            sub.callback.apply sub.context, [data, originalChannel, next]
-          else
-            next null, sub.callback.apply sub.context, [data, originalChannel]
-        catch e
-          next e
-
   # ## Publish an event
   #
   # Parameters:
-  # - (String) topic             - The topic name
-  # - (Object) data              - The data that gets published
-  # - (Funtction)                - callback method
+  #
+  # - (String) topic              - The topic name
+  # - (Object) data               - The data that gets published
+  # - (Function)                  - Callback method
+  #
   emit: (channel, data, cb=(->), originalChannel=channel) ->
 
     if typeof data is "function"
@@ -74,7 +75,7 @@ class Mediator
       data = undefined
     return false unless typeof channel is "string"
 
-    tasks = _getTasks data, channel, originalChannel, @
+    tasks = Mediator._getTasks data, channel, originalChannel, @
 
     util.runSeries tasks,((errors, results) ->
       if errors
@@ -89,16 +90,18 @@ class Mediator
   # ## Send a task
   #
   # Parameters:
-  # - (String) topic             - The topic name
-  # - (Object) data              - The data that gets published
-  # - (Function)                 - callback method
+  #
+  # - (String) topic              - The topic name
+  # - (Object) data               - The data that gets published
+  # - (Function)                  - callback method
+  #
   send: (channel, data, cb=->) ->
 
     if typeof data is "function"
       cb  = data
       data = undefined
     return false unless typeof channel is "string"
-    tasks = _getTasks data, channel, channel, @
+    tasks = Mediator._getTasks data, channel, channel, @
 
     util.runFirst tasks,((errors, result) ->
       if errors
@@ -109,12 +112,37 @@ class Mediator
     @
 
   # ## Install Pub/Sub functions to an object
-  installTo: (obj,force) ->
+  #
+  # Parameters:
+  # - (Object) obj                - Object to install
+  # - (Boolean) force             - Force overwrite existing methods of
+  #                                 the target object (default - false)
+  #
+  installTo: (obj, force) ->
     if typeof obj is "object"
       for k,v of @
         if force then obj[k] = v
         else obj[k] ?= v
     @
+
+  # ## Pipe (reemit) messages from one to another channel
+  #
+  # Parameters:
+  # - (String) src                - The source channel
+  # - (String) target             - The target channel
+  # - (Mediator) mediator         - The target mediator (default - this)
+  #
+  # Returns:
+  pipe: (src, target, mediator) ->
+    Mediator._redirect.apply @, ['emit', arguments...]
+
+
+  forward: (src, target, mediator) ->
+    Mediator._redirect.apply @, ['send', arguments...]
+
+  ###
+  Section: Private static methods
+  ###
 
   @_redirect: (method, src, target, mediator) ->
 
@@ -126,17 +154,21 @@ class Mediator
     # prevent cycles
     return @ if mediator is @ and src is target
 
-    @on src, -> mediator[method].apply mediator, [target, arguments...]
+    @on src, (data, ch, cb) -> mediator[method].call mediator, target, data, cb
 
     @
 
-  pipe: (src, target, mediator) ->
-    Mediator._redirect.apply @, ['emit', arguments...]
-
-
-  forward: (src, target, mediator) ->
-    Mediator._redirect.apply @, ['send', arguments...]
-
+  @_getTasks: (data, channel, originalChannel, ctx) ->
+    subscribers = ctx.channels[channel] or []
+    for sub in subscribers then do (sub) ->
+      (next) ->
+        try
+          if util.hasArgument sub.callback, 3
+            sub.callback.apply sub.context, [data, originalChannel, next]
+          else
+            next null, sub.callback.apply sub.context, [data, originalChannel]
+        catch e
+          next e
 
   @_rm: (o, ch, cb, ctxt) ->
     return unless o.channels[ch]?
